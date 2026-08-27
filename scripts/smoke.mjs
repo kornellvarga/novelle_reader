@@ -135,9 +135,9 @@ for (let i = 0; i < 10 && !hotspotSeen; i++) {
 ok("interaction beat offered", hotspotSeen);
 if (hotspotSeen) {
   await page.click(".hotspot");
-  await page.waitForTimeout(700);
-  const canvases = await page.locator(".art-media canvas").count();
-  ok("token state art applied", canvases > 0);
+  const tokenArt = page.locator(".art-media canvas").first();
+  const tokenArtReady = await tokenArt.waitFor({ state: "visible", timeout: 6000 }).then(() => true).catch(() => false);
+  ok("token state art applied", tokenArtReady);
 }
 
 let streetSeen = (await page.locator(".stage3d").getAttribute("data-scene")) === "street";
