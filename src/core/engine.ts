@@ -57,14 +57,18 @@ export class Engine {
   private settings: Settings = { voice: true, rate: 1, font: 17 };
 
   private pageOfPara: number[] = [];
+  private pageOfSentence: number[][] = [];
   private pageFirstPara: number[] = [];
   private pageLastPara: number[] = [];
+  private pageFirstCue: number[] = [];
   private activeSceneId: string | null = null;
   private sceneState: string | null = null;
   private coverEl: HTMLElement | null = null;
   private resizeTimer = 0;
   private gateWasPlaying = false;
   private lastLayoutW = 0;
+  private lastLayoutH = 0;
+  private reading = false;
 
   async mount(appRoot: HTMLElement): Promise<void> {
     const loaded = await loadBook("books/the-hush");
@@ -125,6 +129,7 @@ export class Engine {
     appRoot.append(this.chrome.el);
 
     window.addEventListener("resize", () => this.onResize());
+    window.visualViewport?.addEventListener("resize", () => this.onResize());
     window.addEventListener("keydown", (e) => this.onKey(e));
 
     if (!gatePassed()) {
@@ -145,13 +150,15 @@ export class Engine {
 
   private showCover(): void {
     if (this.coverEl) return;
+    this.reading = false;
+    this.env.setActive(false);
     let hasProgress = false;
     try {
-      hasProgress = window.localStorage.getItem("novelle:pos") !== null;
+      hasProgress = window.localStorage.getItem("novelle:v1") !== null;
     } catch {
       /* ignore */
     }
-    const cover = new CoverScreen(this.book, hasProgress, { onBegin: (i) => this.beginChapter(i) });
+    const cover = new CoverScreen(this.book, hasProgress ? this.chapterIdx : null, { onBegin: (i) => this.beginChapter(i) });
     this.coverEl = cover.el;
     document.getElementById("app")?.append(cover.el);
   }
@@ -168,13 +175,17 @@ export class Engine {
     if (!preserveCue || this.chapterIdx !== idx) this.cueIndex = 0;
     this.chapterIdx = idx;
     this.cueIndex = Math.max(0, Math.min(this.cueIndex, this.cues.length - 1));
+    this.reading = true;
     this.coverEl?.remove();
     this.coverEl = null;
+    void this.env.activate();
 
     const ch = this.book.chapters[idx];
+    this.view.setSingle(this.useSinglePage());
     const titleNode = makeChapterTitle(ch.title, this.book.meta.title, this.book.meta.seriesTitle);
-    const layout = layoutChapter(ch, this.settings.font, titleNode, this.pageBox());
+    const layout = layoutChapter(ch, this.settings.font, titleNode, this.view.measurePageBox());
     this.pageOfPara = layout.pageOfPara;
+    this.pageOfSentence = layout.pageOfSentence;
     this.pageFirstPara = layout.pages.map((page) => {
       const indexes = page.map((el) => Number(el.dataset.pidx)).filter(Number.isFinite);
       return indexes.length ? Math.min(...indexes) : Number.MAX_SAFE_INTEGER;
@@ -183,10 +194,19 @@ export class Engine {
       const indexes = page.map((el) => Number(el.dataset.pidx)).filter(Number.isFinite);
       return indexes.length ? Math.max(...indexes) : -1;
     });
+    const cueIndex = new Map(this.cues.map((cue, i) => [`${cue.paragraphIndex}:${cue.sentenceIndex}`, i]));
+    this.pageFirstCue = layout.pages.map((page) => {
+      const indexes = page.flatMap((el) => Array.from(el.querySelectorAll<HTMLElement>(".sent[data-sidx]"), (sent) => {
+        const para = sent.closest<HTMLElement>(".para[data-pidx]");
+        return cueIndex.get(`${para?.dataset.pidx}:${sent.dataset.sidx}`) ?? Number.MAX_SAFE_INTEGER;
+      }));
+      return indexes.length ? Math.min(...indexes) : Number.MAX_SAFE_INTEGER;
+    });
 
-    this.view.setSingle(window.innerWidth < 760);
     this.view.setPages(layout.pages);
-    this.lastLayoutW = window.innerWidth;
+    const viewport = this.viewportSize();
+    this.lastLayoutW = viewport.w;
+    this.lastLayoutH = viewport.h;
     const startSpread = this.cueIndex < this.cues.length ? this.spreadForCue(this.cueIndex) : 0;
     if (startSpread <= 0) this.view.showFirst();
     else this.view.goto(startSpread, false);
@@ -196,15 +216,16 @@ export class Engine {
     this.persist();
   }
 
-  private pageBox(): { w: number; h: number } {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const single = vw < 760;
-    const bw = single ? Math.min(600, vw * 0.94) : Math.min(980, vw * 0.86);
-    const bh = Math.min(660, vh * 0.7);
-    const padX = Math.min(50, Math.max(34, vw * 0.0315));
-    const padTop = Math.min(58, Math.max(44, vh * 0.05));
-    return { w: (single ? bw : bw / 2) - padX * 2 - 2, h: bh - padTop - 34 };
+  private viewportSize(): { w: number; h: number } {
+    return {
+      w: window.visualViewport?.width ?? window.innerWidth,
+      h: window.visualViewport?.height ?? window.innerHeight,
+    };
+  }
+
+  private useSinglePage(): boolean {
+    const { w, h } = this.viewportSize();
+    return !(w >= 760 && w / Math.max(1, h) >= 1.35);
   }
 
   private togglePlay(): void {
@@ -308,7 +329,9 @@ export class Engine {
   private spreadForCue(i: number): number {
     const cue = this.cues[i];
     if (!cue) return 0;
-    const page = this.pageOfPara[cue.paragraphIndex] ?? 0;
+    const page = this.pageOfSentence[cue.paragraphIndex]?.[cue.sentenceIndex]
+      ?? this.pageOfPara[cue.paragraphIndex]
+      ?? 0;
     return this.view.isSingle ? page : Math.floor(page / 2);
   }
 
@@ -347,8 +370,15 @@ export class Engine {
 
   private syncCueToSpread(k: number): void {
     const pages = this.view.isSingle ? [k] : [k * 2, k * 2 + 1];
+    const visibleCues = pages.map((page) => this.pageFirstCue[page]).filter((v) => Number.isFinite(v) && v < Number.MAX_SAFE_INTEGER);
+    if (visibleCues.length) {
+      this.cueIndex = Math.min(...visibleCues);
+      this.persist();
+      return;
+    }
     const visible = pages.map((page) => this.pageFirstPara[page]).filter((v) => Number.isFinite(v) && v < Number.MAX_SAFE_INTEGER);
-    const firstPara = visible.length ? Math.min(...visible) : 0;
+    if (!visible.length) return;
+    const firstPara = Math.min(...visible);
     const idx = this.cues.findIndex((c) => c.paragraphIndex >= firstPara);
     this.cueIndex = idx >= 0 ? idx : 0;
     this.persist();
@@ -437,13 +467,17 @@ export class Engine {
   private onResize(): void {
     window.clearTimeout(this.resizeTimer);
     this.resizeTimer = window.setTimeout(() => {
-      const single = window.innerWidth < 760;
-      if (single !== this.view.isSingle || Math.abs(window.innerWidth - this.lastLayoutW) > 80) {
-        this.lastLayoutW = window.innerWidth;
-        this.view.setSingle(single);
-        this.beginChapter(this.chapterIdx, true);
-      }
-    }, 220);
+      if (!this.reading) return;
+      const viewport = this.viewportSize();
+      const single = this.useSinglePage();
+      const changed = single !== this.view.isSingle
+        || Math.abs(viewport.w - this.lastLayoutW) > 3
+        || Math.abs(viewport.h - this.lastLayoutH) > 3;
+      if (!changed) return;
+      this.lastLayoutW = viewport.w;
+      this.lastLayoutH = viewport.h;
+      this.beginChapter(this.chapterIdx, true);
+    }, 180);
   }
 
   private loadPersisted(): void {

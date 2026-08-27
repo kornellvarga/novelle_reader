@@ -13,6 +13,9 @@
   --display: "Archivo Black", "Arial Black", sans-serif;
   --body: "Inter", system-ui, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --reader-top: 43px;
+  --reader-bottom: 51px;
+  --interaction-rail: 0px;
 }
 
 * {
@@ -23,6 +26,7 @@ html,
 body {
   margin: 0;
   height: 100%;
+  min-height: 100dvh;
   background: var(--void);
   color: var(--text);
   font-family: var(--body);
@@ -30,8 +34,10 @@ body {
 
 #app {
   height: 100%;
+  min-height: 100dvh;
   position: relative;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button {
@@ -50,10 +56,12 @@ button {
   cursor: pointer;
 }
 
-.btn:hover {
-  background: var(--growth);
-  border-color: var(--growth);
-  color: var(--void);
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    background: var(--growth);
+    border-color: var(--growth);
+    color: var(--void);
+  }
 }
 
 .btn:focus-visible {
@@ -93,4 +101,17 @@ button {
 
 ::-webkit-scrollbar-track {
   background: var(--void);
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  :root {
+    --reader-bottom: 64px;
+    --interaction-rail: 56px;
+  }
+
+  .btn {
+    min-height: 48px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
 }

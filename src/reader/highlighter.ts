@@ -1,4 +1,4 @@
-import { sentenceElFor, wordEls, wordIndexForChar } from "./pager.ts";
+import { wordEls, wordIndexForChar } from "./pager.ts";
 
 function clean(scope: ParentNode): void {
   scope.querySelectorAll(".sent.speaking").forEach((el) => el.classList.remove("speaking"));
@@ -7,18 +7,19 @@ function clean(scope: ParentNode): void {
 
 export function applySentence(scope: ParentNode, pidx: number, sidx: number): HTMLSpanElement | null {
   clean(scope);
-  const para = scope.querySelector<HTMLParagraphElement>(`.para[data-pidx="${pidx}"]`);
-  if (!para) return null;
-  const sent = sentenceElFor(para, sidx);
-  if (!sent) return null;
-  sent.classList.add("speaking");
-  return sent;
+  const paragraphs = Array.from(scope.querySelectorAll<HTMLParagraphElement>(`.para[data-pidx="${pidx}"]`));
+  const sentences = paragraphs.flatMap((para) => Array.from(para.querySelectorAll<HTMLSpanElement>(`.sent[data-sidx="${sidx}"]`)));
+  sentences.forEach((sent) => sent.classList.add("speaking"));
+  return sentences[0] ?? null;
 }
 
 export function applyWord(scope: ParentNode, pidx: number, sidx: number, charIndex: number): void {
-  const para = scope.querySelector<HTMLParagraphElement>(`.para[data-pidx="${pidx}"]`);
-  if (!para) return;
-  const sent = sentenceElFor(para, sidx);
+  const paragraphs = Array.from(scope.querySelectorAll<HTMLParagraphElement>(`.para[data-pidx="${pidx}"]`));
+  const sentences = paragraphs.flatMap((para) => Array.from(para.querySelectorAll<HTMLSpanElement>(`.sent[data-sidx="${sidx}"]`)));
+  const sent = [...sentences].reverse().find((candidate) => {
+    const first = candidate.querySelector<HTMLElement>(".w")?.dataset.charOffset;
+    return first !== undefined && Number(first) <= charIndex;
+  }) ?? sentences[0] ?? null;
   if (!sent) return;
   const words = wordEls(sent);
   if (words.length === 0) return;

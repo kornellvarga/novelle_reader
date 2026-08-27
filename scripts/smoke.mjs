@@ -154,7 +154,139 @@ for (let i = 0; i < 10; i++) {
 }
 ok("rewound to first spread", (await page.textContent(".pg-l .pg-num")) === "1");
 
-ok("zero console errors", consoleErrors === 0, `${consoleErrors} errors`);
+ok("zero desktop console errors", consoleErrors === 0, `${consoleErrors} errors`);
+
+const mobileContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+  deviceScaleFactor: 2,
+});
+const mobile = await mobileContext.newPage();
+let mobileErrors = 0;
+mobile.on("console", (m) => { if (m.type() === "error") mobileErrors += 1; });
+mobile.on("pageerror", () => { mobileErrors += 1; });
+
+await mobile.goto(`${BASE}?voice=0`, { waitUntil: "networkidle" });
+await mobile.evaluate(() => window.localStorage.clear());
+await mobile.reload({ waitUntil: "networkidle" });
+await mobile.click("text=I'M 18+");
+await mobile.waitForSelector(".cover-screen");
+ok("mobile cover fits without horizontal overflow", await mobile.evaluate(() => document.documentElement.scrollWidth === innerWidth));
+
+await mobile.locator(".chapter-item").first().click();
+await mobile.waitForSelector(".pg-r .para");
+const mobileLayout = await mobile.evaluate(() => {
+  const book = document.querySelector(".book").getBoundingClientRect();
+  const controls = document.querySelector(".controls").getBoundingClientRect();
+  const primary = [...document.querySelectorAll(".control-nav .btn")].map((el) => el.getBoundingClientRect());
+  return {
+    noOverlap: book.bottom <= controls.top,
+    targetSizes: primary.map((r) => ({ w: r.width, h: r.height })),
+    horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
+  };
+});
+ok("mobile book clears the control tray", mobileLayout.noOverlap, JSON.stringify(mobileLayout));
+ok("mobile primary controls are touch sized", mobileLayout.targetSizes.every((r) => r.w >= 44 && r.h >= 44), JSON.stringify(mobileLayout));
+ok("mobile reader has no horizontal overflow", mobileLayout.horizontalOverflow === 0, JSON.stringify(mobileLayout));
+
+await mobile.click(".btn-more");
+ok("mobile tools drawer opens", await mobile.locator(".chrome").evaluate((el) => el.classList.contains("tools-open")));
+const toolHeights = await mobile.locator(".control-tools .btn").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+ok("mobile tool controls are touch sized", toolHeights.every((h) => h >= 44), JSON.stringify(toolHeights));
+await mobile.click(".control-tools-scrim");
+
+const bookBox = await mobile.locator(".book").boundingBox();
+await mobile.touchscreen.tap(bookBox.x + bookBox.width * 0.8, bookBox.y + bookBox.height * 0.5);
+await mobile.waitForTimeout(180);
+ok("mobile page tap advances", (await mobile.textContent(".pg-r .pg-num")) === "2");
+
+await mobile.locator(".book").dispatchEvent("pointerdown", {
+  pointerId: 17, pointerType: "touch", isPrimary: true,
+  clientX: bookBox.x + bookBox.width * 0.82, clientY: bookBox.y + bookBox.height * 0.5,
+});
+await mobile.locator(".book").dispatchEvent("pointerup", {
+  pointerId: 17, pointerType: "touch", isPrimary: true,
+  clientX: bookBox.x + bookBox.width * 0.18, clientY: bookBox.y + bookBox.height * 0.5,
+});
+await mobile.waitForTimeout(180);
+ok("mobile swipe advances", (await mobile.textContent(".pg-r .pg-num")) === "3");
+
+await mobile.setViewportSize({ width: 390, height: 640 });
+await mobile.waitForTimeout(420);
+const shortLayout = await mobile.evaluate(() => {
+  const paper = document.querySelector(".pg-r").getBoundingClientRect();
+  const controls = document.querySelector(".controls").getBoundingClientRect();
+  const paras = [...document.querySelectorAll(".pg-r .para")].map((el) => el.getBoundingClientRect());
+  return {
+    clearsControls: paper.bottom <= controls.top,
+    textFits: paras.every((r) => r.bottom <= paper.bottom - 22),
+  };
+});
+ok("short phone relayout clears controls", shortLayout.clearsControls, JSON.stringify(shortLayout));
+ok("short phone repaginates visible text", shortLayout.textFits, JSON.stringify(shortLayout));
+
+for (let i = 0; i < 120 && Number(await mobile.textContent(".pg-r .pg-num")) > 1; i++) {
+  await mobile.keyboard.press("ArrowLeft");
+  await mobile.waitForTimeout(12);
+}
+const clippedMobilePages = [];
+for (let i = 0; i < 120; i++) {
+  const pageFit = await mobile.evaluate(() => {
+    const paper = document.querySelector(".pg-r");
+    const paperRect = paper.getBoundingClientRect();
+    const clipped = [...paper.querySelectorAll(".para")]
+      .filter((el) => el.getBoundingClientRect().bottom > paperRect.bottom - 22)
+      .map((el) => el.textContent.slice(0, 60));
+    return { page: paper.querySelector(".pg-num")?.textContent ?? "", clipped };
+  });
+  if (pageFit.clipped.length) clippedMobilePages.push(pageFit);
+  const before = pageFit.page;
+  await mobile.keyboard.press("ArrowRight");
+  await mobile.waitForTimeout(12);
+  if ((await mobile.textContent(".pg-r .pg-num")) === before) break;
+}
+ok("short phone has no clipped chapter pages", clippedMobilePages.length === 0, JSON.stringify(clippedMobilePages));
+if (await mobile.locator(".paywall").isVisible().catch(() => false)) {
+  await mobile.click("text=KEEP BROWSING");
+  await mobile.waitForTimeout(280);
+}
+
+await mobile.click(".btn-more");
+await mobile.click(".control-tools .btn:last-child");
+await mobile.waitForSelector(".cover-screen");
+await mobile.setViewportSize({ width: 844, height: 390 });
+await mobile.waitForTimeout(420);
+ok("rotation keeps the cover open", await mobile.isVisible(".cover-screen"));
+
+await mobile.setViewportSize({ width: 390, height: 844 });
+await mobile.locator(".chapter-item").first().click();
+await mobile.waitForSelector(".pg-r .para");
+let mobileHotspot = false;
+for (let i = 0; i < 16 && !mobileHotspot; i++) {
+  mobileHotspot = await mobile.locator(".hotspot").isVisible().catch(() => false);
+  if (!mobileHotspot) {
+    await mobile.keyboard.press("ArrowRight");
+    await mobile.waitForTimeout(100);
+  }
+}
+ok("mobile interaction beat offered", mobileHotspot);
+if (mobileHotspot) {
+  const interactionLayout = await mobile.evaluate(() => {
+    const book = document.querySelector(".book").getBoundingClientRect();
+    const hotspot = document.querySelector(".hotspot").getBoundingClientRect();
+    const controls = document.querySelector(".controls").getBoundingClientRect();
+    return {
+      clearOfBook: hotspot.top >= book.bottom,
+      clearOfControls: hotspot.bottom <= controls.top,
+      touchHeight: hotspot.height,
+    };
+  });
+  ok("mobile interaction has a safe action rail", interactionLayout.clearOfBook && interactionLayout.clearOfControls, JSON.stringify(interactionLayout));
+  ok("mobile interaction is touch sized", interactionLayout.touchHeight >= 44, JSON.stringify(interactionLayout));
+}
+ok("zero mobile console errors", mobileErrors === 0, `${mobileErrors} errors`);
+await mobileContext.close();
 
 await browser.close();
 const failed = results.filter((r) => !r.pass).length;

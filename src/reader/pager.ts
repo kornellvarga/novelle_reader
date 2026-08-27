@@ -4,12 +4,7 @@ import { h } from "../core/util.ts";
 const SENT_RE = /[^.!?…]+[.!?…]+["')\]]*\s*|[^.!?…]+$/g;
 const WORD_RE = /\S+/g;
 
-export interface SentRef {
-  el: HTMLSpanElement;
-  offsets: number[];
-}
-
-const sentRefs = new WeakMap<HTMLParagraphElement, SentRef[]>();
+const MAX_WORDS_PER_SENTENCE_PIECE = 18;
 
 export function buildParagraphEl(p: Paragraph): HTMLParagraphElement {
   const el = h("p", "para");
@@ -18,7 +13,6 @@ export function buildParagraphEl(p: Paragraph): HTMLParagraphElement {
   if (p.index === 0) el.classList.add("opening");
   if (p.interactionId !== null) el.classList.add("has-beat");
 
-  const refs: SentRef[] = [];
   let sidx = 0;
   let m: RegExpExecArray | null;
   SENT_RE.lastIndex = 0;
@@ -26,23 +20,34 @@ export function buildParagraphEl(p: Paragraph): HTMLParagraphElement {
     const raw = m[0];
     const sent = h("span", "sent");
     sent.dataset.sidx = String(sidx);
-    const offsets: number[] = [];
     let w: RegExpExecArray | null;
     WORD_RE.lastIndex = 0;
     let cursor = 0;
     while ((w = WORD_RE.exec(raw))) {
       if (w.index > cursor) sent.append(document.createTextNode(raw.slice(cursor, w.index)));
       const word = h("span", "w", w[0]);
-      offsets.push(w.index);
+      word.dataset.charOffset = String(w.index);
       sent.append(word);
       cursor = w.index + w[0].length;
     }
     if (cursor < raw.length) sent.append(document.createTextNode(raw.slice(cursor)));
-    el.append(sent);
-    refs.push({ el: sent, offsets });
+    const nodes = Array.from(sent.childNodes);
+    let piece = h("span", "sent");
+    piece.dataset.sidx = String(sidx);
+    let pieceWords = 0;
+    for (const node of nodes) {
+      if (node instanceof HTMLElement && node.classList.contains("w") && pieceWords >= MAX_WORDS_PER_SENTENCE_PIECE) {
+        el.append(piece);
+        piece = h("span", "sent");
+        piece.dataset.sidx = String(sidx);
+        pieceWords = 0;
+      }
+      piece.append(node);
+      if (node instanceof HTMLElement && node.classList.contains("w")) pieceWords += 1;
+    }
+    if (piece.childNodes.length) el.append(piece);
     sidx += 1;
   }
-  sentRefs.set(el, refs);
   return el;
 }
 
@@ -51,15 +56,11 @@ export function sentenceElFor(paraEl: HTMLParagraphElement, sidx: number): HTMLS
 }
 
 export function wordIndexForChar(sentEl: HTMLSpanElement, charIndex: number): number {
-  const paraEl = sentEl.closest(".para");
-  if (!(paraEl instanceof HTMLParagraphElement)) return -1;
-  const refs = sentRefs.get(paraEl);
-  if (!refs) return -1;
-  const ref = refs.find((r) => r.el === sentEl);
-  if (!ref || ref.offsets.length === 0) return -1;
+  const offsets = wordEls(sentEl).map((word) => Number(word.dataset.charOffset)).filter(Number.isFinite);
+  if (!offsets || offsets.length === 0) return -1;
   let idx = 0;
-  for (let i = 0; i < ref.offsets.length; i++) {
-    if (ref.offsets[i] <= charIndex) idx = i;
+  for (let i = 0; i < offsets.length; i++) {
+    if (offsets[i] <= charIndex) idx = i;
     else break;
   }
   return idx;
@@ -72,6 +73,7 @@ export function wordEls(sentEl: HTMLSpanElement): HTMLElement[] {
 export interface PageLayout {
   pages: HTMLElement[][];
   pageOfPara: number[];
+  pageOfSentence: number[][];
 }
 
 export interface PageBox {
@@ -85,11 +87,22 @@ function buildPageArtEl(art: PageArt): HTMLElement {
   const image = h("img", "page-illustration-image");
   image.src = art.image;
   image.alt = art.alt;
-  image.loading = "eager";
+  image.loading = "lazy";
   image.decoding = "async";
   figure.append(image);
   if (art.caption) figure.append(h("figcaption", "page-illustration-caption", art.caption));
   return figure;
+}
+
+function paragraphFragment(source: HTMLParagraphElement, fontPx: number, continued: boolean): HTMLParagraphElement {
+  const fragment = h("p", source.className);
+  fragment.dataset.pidx = source.dataset.pidx;
+  fragment.style.fontSize = `${fontPx}px`;
+  if (continued) {
+    fragment.classList.add("continued");
+    fragment.classList.remove("opening");
+  }
+  return fragment;
 }
 
 export function layoutChapter(chapter: Chapter, fontPx: number, titleNode: Node, box: PageBox): PageLayout {
@@ -107,6 +120,7 @@ export function layoutChapter(chapter: Chapter, fontPx: number, titleNode: Node,
   let current: HTMLElement[] = [titleWrap];
   let pageIndex = 0;
   const pageOfPara: number[] = [];
+  const pageOfSentence: number[][] = [];
   const artAfter = new Map<number, PageArt[]>();
   const artStarts = new Set<number>();
   for (const art of chapter.pageArt ?? []) {
@@ -122,19 +136,35 @@ export function layoutChapter(chapter: Chapter, fontPx: number, titleNode: Node,
       pageIndex = pages.length;
       holder.replaceChildren();
     }
-    const el = buildParagraphEl(p);
-    el.style.fontSize = `${fontPx}px`;
-    holder.append(el);
-    if (holder.scrollHeight > holder.clientHeight + 1 && current.length > 0) {
-      el.remove();
-      pages.push(current);
-      current = [el];
-      pageIndex = pages.length;
-      holder.replaceChildren(el);
-    } else {
-      current.push(el);
+    const source = buildParagraphEl(p);
+    const sentences = Array.from(source.querySelectorAll<HTMLSpanElement>(":scope > .sent"));
+    pageOfSentence[p.index] = [];
+    let fragment = paragraphFragment(source, fontPx, false);
+    holder.append(fragment);
+    current.push(fragment);
+    for (const sentence of sentences) {
+      fragment.append(sentence);
+      if (holder.scrollHeight > holder.clientHeight + 1) {
+        sentence.remove();
+        if (fragment.childElementCount === 0) {
+          current.pop();
+          fragment.remove();
+        }
+        if (current.length > 0) pages.push(current);
+        current = [];
+        pageIndex = pages.length;
+        holder.replaceChildren();
+        fragment = paragraphFragment(source, fontPx, true);
+        fragment.append(sentence);
+        holder.append(fragment);
+        current.push(fragment);
+      }
+      const sentenceIndex = Number(sentence.dataset.sidx);
+      if (Number.isFinite(sentenceIndex) && pageOfSentence[p.index][sentenceIndex] === undefined) {
+        pageOfSentence[p.index][sentenceIndex] = pageIndex;
+      }
+      if (pageOfPara[p.index] === undefined) pageOfPara[p.index] = pageIndex;
     }
-    pageOfPara[p.index] = pageIndex;
 
     for (const art of artAfter.get(p.index) ?? []) {
       if (current.length > 0) pages.push(current);
@@ -149,5 +179,5 @@ export function layoutChapter(chapter: Chapter, fontPx: number, titleNode: Node,
 
   holder.remove();
   for (const page of pages) for (const el of page) el.remove();
-  return { pages, pageOfPara };
+  return { pages, pageOfPara, pageOfSentence };
 }

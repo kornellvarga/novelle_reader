@@ -21,6 +21,8 @@ export class BookView {
   private animating = false;
   private single = false;
   private cb: BookViewCallbacks;
+  private gesture: { pointerId: number; x: number; y: number; at: number } | null = null;
+  private suppressClick = false;
 
   constructor(cb: BookViewCallbacks = {}) {
     this.cb = cb;
@@ -39,12 +41,34 @@ export class BookView {
     this.el.append(perspective);
 
     this.el.addEventListener("click", (e) => {
+      if (this.suppressClick) {
+        this.suppressClick = false;
+        return;
+      }
       if ((e.target as HTMLElement).closest(".hotspot, .bubble, button, a")) return;
       const rect = this.bookEl.getBoundingClientRect();
       const dir: 1 | -1 = e.clientX > rect.left + rect.width / 2 ? 1 : -1;
-      const moved = dir === 1 ? this.next(false) : this.prev(false);
-      if (!moved && this.cb.onManualFlip) this.cb.onManualFlip(dir);
+      this.manualFlip(dir, false);
     });
+
+    this.bookEl.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if ((e.target as HTMLElement).closest(".hotspot, .bubble, button, a")) return;
+      this.gesture = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() };
+    });
+    this.bookEl.addEventListener("pointerup", (e) => {
+      const start = this.gesture;
+      this.gesture = null;
+      if (!start || start.pointerId !== e.pointerId) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const quickEnough = performance.now() - start.at < 900;
+      if (!quickEnough || Math.abs(dx) < 46 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      this.suppressClick = true;
+      window.setTimeout(() => { this.suppressClick = false; }, 360);
+      this.manualFlip(dx < 0 ? 1 : -1, true);
+    });
+    this.bookEl.addEventListener("pointercancel", () => { this.gesture = null; });
   }
 
   get spreadIndex(): number {
@@ -57,6 +81,18 @@ export class BookView {
 
   get isSingle(): boolean {
     return this.single;
+  }
+
+  measurePageBox(): { w: number; h: number } {
+    const page = this.single ? this.pageR : this.pageL;
+    const rect = page.getBoundingClientRect();
+    const style = getComputedStyle(page);
+    const horizontal = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const vertical = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return {
+      w: Math.max(1, rect.width - horizontal - 2),
+      h: Math.max(1, rect.height - vertical),
+    };
   }
 
   setSingle(single: boolean): void {
@@ -117,6 +153,11 @@ export class BookView {
     if (animate && !this.single) void this.flipAnimated(-1, target);
     else this.renderSpread(target, true);
     return true;
+  }
+
+  private manualFlip(dir: 1 | -1, animate: boolean): void {
+    const moved = dir === 1 ? this.next(animate) : this.prev(animate);
+    if (!moved && this.cb.onManualFlip) this.cb.onManualFlip(dir);
   }
 
   private fill(page: HTMLElement, num: HTMLElement, idx: number): void {

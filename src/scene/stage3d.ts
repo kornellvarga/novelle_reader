@@ -27,16 +27,18 @@ export class Stage3D {
   private storyScene = "room";
   private tokenActive = false;
   private disposed = false;
+  private active = false;
+  private readonly lowPower = window.matchMedia("(pointer: coarse), (max-width: 760px)").matches;
 
   constructor(private readonly bookDir: string) {
     this.el.className = "stage3d";
     this.el.setAttribute("aria-hidden", "true");
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer = new THREE.WebGLRenderer({ antialias: !this.lowPower, alpha: false, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(this.lowPower ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.18;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.lowPower;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.domElement.className = "stage3d-canvas";
     this.el.append(this.renderer.domElement);
@@ -44,9 +46,15 @@ export class Stage3D {
     this.buildRoom();
     this.resize();
     window.addEventListener("resize", this.resize);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
     if (!prefersReducedMotion()) window.addEventListener("pointermove", this.onPointerMove, { passive: true });
     void this.loadStoryModels();
-    this.animate();
+  }
+
+  setActive(active: boolean): void {
+    this.active = active;
+    if (active) this.startRendering();
+    else this.stopRendering();
   }
 
   setStoryState(sceneId: string, stateKey?: string | null): void {
@@ -54,6 +62,7 @@ export class Stage3D {
     this.tokenActive = sceneId === "room" && stateKey === "token";
     this.el.dataset.scene = sceneId;
     this.el.dataset.state = stateKey ?? "";
+    if (this.active) this.startRendering();
   }
 
   dispose(): void {
@@ -61,6 +70,7 @@ export class Stage3D {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.resize);
     window.removeEventListener("pointermove", this.onPointerMove);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.models.forEach((model) => model.dispose());
     this.rainGeometry?.dispose();
     this.renderer.dispose();
@@ -174,7 +184,8 @@ export class Stage3D {
 
   private buildRain(): void {
     const points: number[] = [];
-    for (let i = 0; i < 88; i += 1) {
+    const count = this.lowPower ? 44 : 88;
+    for (let i = 0; i < count; i += 1) {
       const drop = {
         position: new THREE.Vector3(-5.0 + Math.random() * 2.8, 0.2 + Math.random() * 2.9, -2.78),
         speed: 0.8 + Math.random() * 1.1,
@@ -252,6 +263,7 @@ export class Stage3D {
       }
       this.scene.add(bookcase.root, desk.root, candle.root, props.root);
       this.el.dataset.ready = "true";
+      if (this.active && prefersReducedMotion()) this.renderFrame();
     } catch (error) {
       this.el.dataset.ready = "fallback";
       console.warn("The Feral3D room props could not be loaded; the reader remains usable.", error);
@@ -265,6 +277,12 @@ export class Stage3D {
     this.camera.fov = width < 760 ? 48 : 38;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    if (this.active && prefersReducedMotion()) this.renderFrame();
+  };
+
+  private readonly onVisibilityChange = (): void => {
+    if (document.hidden) this.stopRendering();
+    else if (this.active) this.startRendering();
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
@@ -272,8 +290,28 @@ export class Stage3D {
     this.pointerY = event.clientY / window.innerHeight - 0.5;
   };
 
-  private animate = (): void => {
+  private startRendering(): void {
+    if (this.disposed || !this.active || document.hidden || this.raf) return;
+    if (prefersReducedMotion()) {
+      this.renderFrame();
+      return;
+    }
     this.raf = requestAnimationFrame(this.animate);
+  }
+
+  private stopRendering(): void {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+  }
+
+  private animate = (): void => {
+    this.raf = 0;
+    if (this.disposed || !this.active || document.hidden) return;
+    this.renderFrame();
+    this.raf = requestAnimationFrame(this.animate);
+  };
+
+  private renderFrame(): void {
     const elapsed = (performance.now() - this.startedAt) / 1000;
     const street = this.storyScene === "street";
     const flicker = 0.86 + Math.sin(elapsed * 9.7) * 0.08 + Math.sin(elapsed * 21.3) * 0.035;
@@ -296,7 +334,7 @@ export class Stage3D {
     this.camera.position.y += (targetY - this.camera.position.y) * 0.035;
     this.camera.lookAt(0, -0.15, -1.4);
     this.renderer.render(this.scene, this.camera);
-  };
+  }
 
   private animateRain(dt: number): void {
     if (!this.rainGeometry || prefersReducedMotion()) return;

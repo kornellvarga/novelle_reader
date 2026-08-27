@@ -31,6 +31,7 @@ Deep links: `?voice=0` (silent read-along pacing) · `?rate=1.5` · `?debug=1`
 | Input | Action |
 |---|---|
 | `←` / `→` / click page halves | flip |
+| Swipe left / right | flip on touch screens |
 | `Space` or PLAY | narrate with karaoke highlight; auto page turns |
 | `V` or VOICE | toggle Web Speech narration ↔ silent timer pacing |
 | `A−` / `A+` | text size (relayouts, keeps position) |
@@ -38,6 +39,11 @@ Deep links: `?voice=0` (silent read-along pacing) · `?rate=1.5` · `?debug=1`
 
 Progress, chapter and settings persist in `localStorage`. The 18+ gate is
 checked once per device, matching BRAND.md copy.
+
+On phones, PREV / PLAY / NEXT remain in a safe-area-aware 48px control tray;
+font, voice and cover actions live under TOOLS. Text repaginates when the visual
+viewport or orientation changes, and long paragraphs/sentences continue across
+pages instead of being clipped.
 
 ## Architecture
 

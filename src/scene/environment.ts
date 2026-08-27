@@ -1,6 +1,6 @@
 import { div } from "../core/util.ts";
 import { hasPainter, paintPlaceholder } from "./placeholders.ts";
-import { Stage3D } from "./stage3d.ts";
+import type { Stage3D } from "./stage3d.ts";
 
 const IMAGE_EXT = ["png", "webp", "jpg", "jpeg"] as const;
 const MOTION_EXT = ["webm", "mp4", "gif"] as const;
@@ -40,19 +40,45 @@ export class Environment {
   private bookDir: string;
   private artHost: HTMLElement;
   private caption: HTMLElement;
-  private stage3d: Stage3D;
+  private stage3d: Stage3D | null = null;
+  private stage3dPromise: Promise<Stage3D> | null = null;
+  private active = false;
   private token = 0;
 
   constructor(bookDir: string) {
     this.bookDir = bookDir.replace(/\/$/, "");
-    this.stage3d = new Stage3D(this.bookDir);
     this.buildStage(this.root);
     this.artHost = this.root.querySelector<HTMLElement>(".art-media")!;
     this.caption = this.root.querySelector<HTMLElement>(".art-caption")!;
   }
 
   dispose(): void {
-    this.stage3d.dispose();
+    this.stage3d?.dispose();
+  }
+
+  async activate(): Promise<void> {
+    this.active = true;
+    const stage3d = await this.ensureStage3D();
+    stage3d.setActive(true);
+  }
+
+  setActive(active: boolean): void {
+    this.active = active;
+    this.stage3d?.setActive(active);
+  }
+
+  private ensureStage3D(): Promise<Stage3D> {
+    if (this.stage3d) return Promise.resolve(this.stage3d);
+    if (!this.stage3dPromise) {
+      this.stage3dPromise = import("./stage3d.ts").then(({ Stage3D }) => {
+        const stage3d = new Stage3D(this.bookDir);
+        stage3d.setActive(this.active);
+        this.root.prepend(stage3d.el);
+        this.stage3d = stage3d;
+        return stage3d;
+      });
+    }
+    return this.stage3dPromise;
   }
 
   private buildStage(stage: HTMLElement): void {
@@ -64,14 +90,17 @@ export class Environment {
     artFrame.append(media, cap);
 
     const atmosphere = div("room-atmosphere");
-    stage.append(this.stage3d.el, atmosphere, artFrame);
+    stage.append(atmosphere, artFrame);
   }
 
   async setScene(spec: SceneSpec, stateKey?: string | null): Promise<void> {
     const myToken = ++this.token;
     const base = stateKey ? `${spec.id}-${stateKey}` : spec.id;
 
-    this.stage3d.setStoryState(spec.id, stateKey);
+    const stage3d = await this.ensureStage3D();
+    if (myToken !== this.token) return;
+    stage3d.setActive(this.active);
+    stage3d.setStoryState(spec.id, stateKey);
 
     this.caption.textContent = spec.alt;
 

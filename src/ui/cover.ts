@@ -8,7 +8,7 @@ export interface CoverCallbacks {
 export class CoverScreen {
   readonly el: HTMLElement;
 
-  constructor(book: Book, hasProgress: boolean, cb: CoverCallbacks) {
+  constructor(book: Book, resumeChapterIdx: number | null, cb: CoverCallbacks) {
     this.el = div("cover-screen");
     const inner = div("cover-inner");
 
@@ -18,10 +18,13 @@ export class CoverScreen {
     const blurb = h("p", "cover-blurb");
     blurb.textContent =
       "He has no name. He will not tell her his face. And by morning, neither of them will remember this happened.";
-    const continueLabel = div(
-      "cover-continue",
-      hasProgress ? "PROGRESS SAVED ON THIS DEVICE" : "",
-    );
+    const continueLabel = div("cover-continue");
+    if (resumeChapterIdx !== null) {
+      const resume = h("button", "btn btn-growth cover-resume", `CONTINUE · ${book.chapters[resumeChapterIdx].title}`);
+      resume.type = "button";
+      resume.addEventListener("click", () => cb.onBegin(resumeChapterIdx));
+      continueLabel.append(resume);
+    }
 
     const chapterList = div("chapter-list");
     book.chapters.forEach((ch, i) => {
