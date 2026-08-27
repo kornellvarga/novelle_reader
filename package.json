@@ -1,0 +1,29 @@
+{
+  "name": "novelle-reader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets:feral": "node scripts/build-feral-assets.mjs",
+    "books": "tsx scripts/build-book.ts",
+    "dev": "npm run books && vite",
+    "build": "npm run books && tsc --noEmit && vite build",
+    "deploy:web": "npm run build && wrangler deploy",
+    "preview": "vite preview --host 127.0.0.1 --port 4180",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "@types/three": "^0.181.0",
+    "jszip": "^3.10.1",
+    "playwright-core": "^1.62.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

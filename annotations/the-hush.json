@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "slug": "the-hush",
+    "title": "THE HUSH",
+    "seriesTitle": "THE UNNAMED",
+    "bookNumber": 1,
+    "adult": true,
+    "sourceFile": "the-hush.md"
+  },
+  "voices": {
+    "narrator": { "speaker": "narrator", "pitch": 0.85, "rate": 0.94, "prefer": ["female", "en-GB"] },
+    "seraine": { "speaker": "seraine", "pitch": 1.08, "rate": 1.0, "prefer": ["female"] }
+  },
+  "chapters": [
+    {
+      "matchHeading": "ONE, The Gift",
+      "scenes": [
+        {
+          "id": "room",
+          "matchFrom": "The Chapter sent her a whore folded up",
+          "alt": "A rented room above a rope-walk. Rain runs down the shutter. A candle burns beside an untouched cup of wine.",
+          "states": {
+            "token": {
+              "alt": "A brass token worn smooth on one face, stamped on the other with an empty cup on its side."
+            }
+          }
+        },
+        {
+          "id": "street",
+          "matchFrom": "Seraine put her hood up and went out into the weather",
+          "alt": "Cairnmouth in autumn. Rain sideways into everyone's business. A hooded figure walks into it."
+        }
+      ],
+      "interactions": [
+        {
+          "id": "token-turn",
+          "matchAt": "Instead she sat with the brass warming in her fist",
+          "promptLabel": "TURN THE TOKEN",
+          "setState": "token",
+          "gate": true
+        }
+      ],
+      "pageArt": [
+        {
+          "id": "cairnmouth-ropewalk",
+          "matchFrom": "Outside, Cairnmouth was doing what Cairnmouth did in autumn",
+          "matchAfter": "She poured more wine and did not drink it",
+          "image": "/books/the-hush/art/pages/cairnmouth-ropewalk.webp",
+          "alt": "Cairnmouth under hard autumn rain, seen from Seraine's upstairs window. Rope-makers walk backward along wet lengths of hemp below.",
+          "caption": "Cairnmouth, in autumn."
+        }
+      ],
+      "speakers": [
+        { "match": "you cows", "speaker": "seraine" },
+        { "match": "she told the rain", "speaker": "seraine" }
+      ]
+    }
+  ]
+}

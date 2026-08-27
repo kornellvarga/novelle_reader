@@ -1,0 +1,268 @@
+.book-wrap {
+  position: absolute;
+  left: 52.5%;
+  top: 54%;
+  transform: translate(-50%, -50%) translate(var(--px, 0), var(--py, 0));
+  z-index: 5;
+  filter: drop-shadow(0 28px 28px rgba(0, 0, 0, 0.48));
+}
+
+.perspective {
+  perspective: 2400px;
+}
+
+.book {
+  position: relative;
+  width: min(980px, 86vw);
+  height: min(660px, 70vh);
+  transform-style: preserve-3d;
+}
+
+.book.single {
+  width: min(600px, 94vw);
+}
+
+.pg {
+  --page-pad-x: clamp(34px, 3.15vw, 50px);
+  --page-pad-top: clamp(44px, 5vh, 58px);
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  padding: var(--page-pad-top) var(--page-pad-x) 34px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f2ecdd 0%, var(--paper) 55%, #e2d8c1 100%);
+  color: var(--ink);
+}
+
+.pg-l {
+  left: 0;
+  border-right: 1px solid #c9bd9f;
+}
+
+.pg-r {
+  right: 0;
+  border-left: 1px solid #d6cab0;
+}
+
+.pg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(255, 190, 80, 0.14), transparent 55%),
+    linear-gradient(90deg, rgba(90, 70, 30, 0.16) 0, transparent 26px),
+    radial-gradient(140% 120% at 50% 115%, rgba(60, 45, 15, 0.22), transparent 52%);
+}
+
+.pg > * {
+  position: relative;
+  z-index: 1;
+}
+
+.pg-l::after {
+  transform: scaleX(-1);
+}
+
+.book.single .pg-l {
+  display: none;
+}
+
+.book.single .pg-r {
+  left: 0;
+  right: 0;
+  width: 100%;
+  border-left: none;
+}
+
+.pg-text {
+  font-family: var(--serif);
+  line-height: 1.64;
+  letter-spacing: 0.004em;
+  hyphens: auto;
+}
+
+.para {
+  margin: 0 0 0.92em;
+  text-align: left;
+  text-indent: 1.4em;
+  text-wrap: pretty;
+}
+
+.para.opening {
+  text-indent: 0;
+}
+
+.para.opening::first-letter {
+  float: left;
+  font-family: var(--display);
+  font-size: 3em;
+  line-height: 0.82;
+  padding: 0.05em 0.09em 0 0;
+  color: #4a381c;
+}
+
+.para.emph {
+  font-style: italic;
+  text-align: center;
+  text-indent: 0;
+  margin: 1.15em 0;
+}
+
+.para.has-beat {
+  min-height: 1em;
+}
+
+.sent.speaking {
+  background: rgba(255, 176, 32, 0.34);
+  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.28);
+}
+
+.w.current {
+  background: var(--amber);
+  color: #241a06;
+}
+
+.pg-num {
+  position: absolute;
+  bottom: 9px;
+  font: 700 10px/1 var(--mono);
+  color: #97896b;
+  z-index: 4;
+}
+
+.pg-l .pg-num {
+  left: 16px;
+}
+
+.pg-r .pg-num {
+  right: 16px;
+}
+
+.title-block {
+  margin: 3% 0 2em;
+  text-align: center;
+  text-indent: 0;
+}
+
+.page-illustration {
+  position: absolute;
+  inset: 14px 14px 26px;
+  z-index: 1;
+  margin: 0;
+  overflow: hidden;
+  background: #131616;
+  box-shadow: inset 0 0 0 1px rgba(74, 56, 28, 0.48);
+}
+
+.page-illustration::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent 60%, rgba(4, 5, 5, 0.64) 100%),
+    radial-gradient(120% 95% at 50% 45%, transparent 55%, rgba(8, 7, 4, 0.32) 100%);
+}
+
+.page-illustration-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.86) contrast(1.04);
+}
+
+.page-illustration-caption {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  z-index: 2;
+  color: #f1e7cf;
+  font: italic 600 13px/1.35 var(--serif);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 8px #000;
+}
+
+.title-series {
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: #97896b;
+}
+
+.title-main {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.75em;
+  letter-spacing: -0.01em;
+  margin: 0.4em 0;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.title-rule {
+  width: 64px;
+  height: 1px;
+  background: #97896b;
+  margin: 0.7em auto;
+}
+
+.title-book {
+  font: italic 400 0.95em/1.4 var(--serif);
+  color: #6d6148;
+}
+
+.leaf-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  z-index: 9;
+}
+
+.leaf {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 100%;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  transition: transform 0.95s cubic-bezier(0.5, 0.08, 0.24, 1);
+  z-index: 10;
+}
+
+.leaf.flip-bwd {
+  left: 0;
+  right: auto;
+  transform-origin: right center;
+}
+
+.leaf .pg {
+  inset: 0;
+  width: auto;
+  left: 0;
+  right: 0;
+  border: none;
+}
+
+.leaf-front,
+.leaf-back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.leaf-back {
+  transform: rotateY(180deg);
+}
+
+.leaf.flip-fwd {
+  transform: rotateY(-180deg);
+}
+
+.leaf.flip-bwd {
+  transform: rotateY(180deg);
+}
